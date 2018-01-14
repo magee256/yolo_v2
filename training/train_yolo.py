@@ -6,13 +6,14 @@ The output of the model described in the Direct Local Prediction
 section of: https://arxiv.org/pdf/1612.08242.pdf
 """
 
+import argparse
 from keras.layers import InputLayer, Conv2D
 from keras import models
 import numpy as np
 from skimage.transform import rescale
 
 from utils.io import Labels
-from .yolo_loss import YoloLoss
+from training.yolo_loss import YoloLoss
 
 
 def build_arg_dict(arg_list):
