@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.pipeline import Pipeline
-from utils.preproc import ScaleImages, PadImages, CropImages
 
-from convert_bbox import update_bounding_box, deepfash_to_yolo
+from preprocessing.convert_bbox import update_bounding_box, deepfash_to_yolo
+from preprocessing.preproc import ScaleImages, PadImages, CropImages
 
 
 def make_old_bbox(row):

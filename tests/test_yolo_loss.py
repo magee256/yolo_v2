@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from yolo_loss import YoloLoss
-from train_yolo import expand_truth_vals
+from training.yolo_loss import YoloLoss
+from training.train_yolo import expand_truth_vals
 
 
 def evaluate_results(func):

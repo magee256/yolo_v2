@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from utils.io import Labels
-from preproc import ScaleImages, PadImages, CropImages
+from .preproc import ScaleImages, PadImages, CropImages
 
 
 def build_arg_dict(arg_list):

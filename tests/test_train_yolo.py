@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from train_yolo import expand_truth_vals
+from training.train_yolo import expand_truth_vals
 
 
 def test_expand_truth_vals():

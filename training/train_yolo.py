@@ -12,7 +12,7 @@ import numpy as np
 from skimage.transform import rescale
 
 from utils.io import Labels
-from yolo_loss import YoloLoss
+from .yolo_loss import YoloLoss
 
 
 def build_arg_dict(arg_list):
