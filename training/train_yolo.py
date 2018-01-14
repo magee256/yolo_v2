@@ -243,7 +243,8 @@ def train_yolo(arg_dict):
                            n_classes=50)
 
     chunksize = 3000
-    labels = Labels(arg_dict['bbox_file'], arg_dict['image_dir'],
+    labels = pd.read_csv(arg_dict['bbox_file'])
+    labels = Labels(labels, arg_dict['image_dir'],
                     n_images_loaded=50)
     train, valid, test = stratified_train_val_test(
         labels.labels['category_label'].values)

@@ -5,6 +5,7 @@ from skimage.io import imread  # uses PIL on the backend
 from skimage.io import imsave
 
 import numpy as np
+import os
 import pandas as pd
 from functools import partial
 
@@ -20,17 +21,21 @@ class Labels:
     """
     Manages saving and loading for all data
     """
-    def __init__(self, labels_info, image_path_prefix, n_images_loaded):
+    def __init__(self, labels_info, parent_dir, n_images_loaded):
         self.n_top_labels = 50  # n most frequent labels
-        self.image_path_prefix = image_path_prefix
-        self.iter_df = True
+        self.parent_dir = parent_dir
         self.n_images_loaded = n_images_loaded
         if isinstance(labels_info, str):
             self.labels = self._determine_data_subset(labels_info)
 
             # Reduce image_paths to their base form
-            self.labels['image_name'] = self.labels['image_name'].apply(
-                lambda x: x[len('img'):-len('.jpg')])
+            def strip_ext_and_parent(path):
+                parent = path.split(os.sep)[0]
+                ext = os.path.splitext(path)[1]
+                return path[len(parent):-len(ext)]
+
+            self.labels['image_name'] = self.labels['image_name']\
+                                            .apply(strip_ext_and_parent)
         elif isinstance(labels_info, pd.DataFrame):
             if n_images_loaded == -1:
                 self.labels = labels_info
@@ -49,9 +54,8 @@ class Labels:
         if not self.n_images_loaded == other.n_images_loaded:
             raise ValueError('Labels objects set for differing numbers of'
                              ' images to load.')
-        # Model name goes first, image variations go last
         out_labels = self.labels.append(other.labels).reset_index(drop=True)
-        return Labels(out_labels, self.image_path_prefix, self.n_images_loaded)
+        return Labels(out_labels, self.parent_dir, self.n_images_loaded)
 
     def __next__(self):
         """
@@ -70,19 +74,13 @@ class Labels:
         subset = subset.copy()
         subset['data'] = subset['image_name'].apply(self._load_data)
         self.i_chunk += 1
-        if self.iter_df:
-            return subset
-        else:
-            # This form is most convenient when feeding to models
-            subset['data'] = subset['data'].apply(self.preproc_data)
-            return np.stack(subset['data'].values), \
-                np.stack(subset['category_label'].values)
+        return subset
 
     def _determine_data_subset(self, labels_path):
         # Read in the attribute information to figure out what images to load
         cat_labels = pd.read_csv(labels_path, skiprows=1, sep='\s+')
 
-        # Figure out which are the most frequent labels to keep
+        # Keep only most frequent labels
         cat_label_count = cat_labels.groupby('category_label').count()
         cat_label_count = cat_label_count.sort_values(
             by=['image_name'], ascending=False)
@@ -117,14 +115,14 @@ class Labels:
 
     def set_data_target(self, target, chunksize, model_name=''):
         """Set the type of data, how much of it to load, and how to save it"""
-        loaders = LoadMethods(self.image_path_prefix)
+        loaders = LoadMethods(self.parent_dir)
         load_method_dict = {
             'raw_image': loaders.load_raw_image,
             'proc_image': loaders.load_proc_image,
             'bottleneck': partial(loaders.load_bottleneck, model_name),
         }
 
-        savers = SaveMethods(self.image_path_prefix)
+        savers = SaveMethods(self.parent_dir)
         save_method_dict = {
             'raw_image': savers.save_proc_image,
             'proc_image': partial(savers.save_bottleneck, model_name),
@@ -156,39 +154,39 @@ class Labels:
 
 
 class LoadMethods():
-    def __init__(self, image_path_prefix):
-        self.image_path_prefix = image_path_prefix
+    def __init__(self, parent_dir):
+        self.parent_dir = parent_dir
 
     def load_raw_image(self, image_path):
         """Given an image path, load the data as an array"""
-        load_path = self.image_path_prefix + 'img' + image_path + '.jpg'
+        load_path = self.parent_dir + 'img' + image_path + '.jpg'
         image = imread(load_path, plugin='pil')
         return image
 
     def load_proc_image(self, image_path):
         """Given an image path, load the data as an array"""
-        load_path = self.image_path_prefix + 'proc_img' + image_path + '.jpg'
+        load_path = self.parent_dir + 'proc_img' + image_path + '.jpg'
         image = imread(load_path, plugin='pil')
         return image
 
     def load_bottleneck(self, model_name, numpy_path):
         """Given a numpy path, load the data as an array"""
-        load_path = self.image_path_prefix + model_name + '_bottleneck' \
+        load_path = self.parent_dir + model_name + '_bottleneck' \
                     + numpy_path + '.npy'
         bottleneck = np.load(load_path)
         return bottleneck
 
 
 class SaveMethods():
-    def __init__(self, image_path_prefix):
-        self.image_path_prefix = image_path_prefix
+    def __init__(self, parent_dir):
+        self.parent_dir = parent_dir
 
     def save_proc_image(self, row):
-        save_path = self.image_path_prefix + 'proc_img' + row['image_name'] + '.jpg'
+        save_path = self.parent_dir + 'proc_img' + row['image_name'] + '.jpg'
         imsave(save_path, row['data'], plugin='pil')
 
     def save_bottleneck(self, model_name, row):
-        save_path = self.image_path_prefix + model_name + '_bottleneck' \
+        save_path = self.parent_dir + model_name + '_bottleneck' \
                     + row['image_name'] + '.npy'
         np.save(save_path, row['data'])
 

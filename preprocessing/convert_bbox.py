@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from utils.io import Labels
-from utils.preproc import ScaleImages, PadImages, CropImages
+from preproc import ScaleImages, PadImages, CropImages
 
 
 def build_arg_dict(arg_list):
@@ -99,8 +99,8 @@ def prep_image_data(arg_dict):
     combo_df = pd.merge(cat_df, bbox_df, how='outer', on='image_name')
     combo_df['image_name'] = combo_df['image_name'].apply(
                 lambda x: x[len('img'):-len('.jpg')])
-    labels = Labels(combo_df, img_dir, n_images_loaded=50)#-1)
-    labels.set_data_target('raw_image', 3000)
+    labels = Labels(combo_df, img_dir, n_images_loaded=-1)
+    labels.set_data_target('raw_image', chunksize=3000)
     return labels
 
 
