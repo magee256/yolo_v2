@@ -19,6 +19,7 @@ from training.yolo_loss import YoloLoss
 def build_arg_dict(arg_list):
     arg_dict = {
         'model_file': arg_list.model_file,
+        'anchor_file': arg_list.anchor_file,
         'bbox_file': arg_list.bbox_file,
         'image_dir': arg_list.image_dir,
     }
@@ -272,6 +273,10 @@ if __name__ == '__main__':
         default='yolo_v2/YAD2K/model_data/yolo.h5',
         help='Path to the pre-trained YOLO v2 model')
     parser.add_argument(
+        'anchor_file', nargs='?',
+        default='model_data/yolo_anchors.txt',
+        help='Path to anchor file definitions')
+    parser.add_argument(
         'bbox_file', nargs='?',
         default='data/Category and Attribute Prediction Benchmark/Anno/yolo_list_bbox.txt',
         help='File containing mapping images to bounding box within image')
@@ -282,4 +287,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     arg_dict = build_arg_dict(args)
-    convert_bbox(arg_dict)
+    train_yolo(arg_dict)
