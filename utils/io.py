@@ -25,24 +25,25 @@ class Labels:
         self.n_top_labels = 50  # n most frequent labels
         self.parent_dir = parent_dir
         self.n_images_loaded = n_images_loaded
+
         if isinstance(labels_info, str):
             self.labels = self._determine_data_subset(labels_info)
-
-            # Reduce image_paths to their base form
-            def strip_ext_and_parent(path):
-                parent = path.split(os.sep)[0]
-                ext = os.path.splitext(path)[1]
-                return path[len(parent):-len(ext)]
-
-            self.labels['image_name'] = self.labels['image_name']\
-                                            .apply(strip_ext_and_parent)
         elif isinstance(labels_info, pd.DataFrame):
-            if n_images_loaded == -1:
-                self.labels = labels_info
-            else:
-                self.labels = labels_info.head(n_images_loaded)
+            self.labels = labels_info
         else:
             raise ValueError('Unknown data type for labels_info')
+
+        if n_images_loaded != -1:
+            self.labels = self.labels.head(self.n_images_loaded)
+
+        # Reduce image_paths to their base form
+        def strip_ext_and_parent(path):
+            parent = path.split(os.sep)[0]
+            ext = os.path.splitext(path)[1]
+            return path[len(parent):-len(ext)]
+
+        self.labels['image_name'] = self.labels['image_name']\
+                                            .apply(strip_ext_and_parent)
 
     def __len__(self):
         return len(self.labels)
@@ -85,33 +86,9 @@ class Labels:
         cat_label_count = cat_label_count.sort_values(
             by=['image_name'], ascending=False)
         kept_labels = cat_label_count.head(self.n_top_labels).index
-
-        # Filter labels not in the n_top_labels most frequent
         cat_labels = cat_labels.loc[
             cat_labels['category_label'].isin(kept_labels)]
-
-        if self.n_images_loaded != -1:
-            return cat_labels.head(self.n_images_loaded)
-        else:
-            return cat_labels
-
-    def one_hot_labels(self):
-        """
-        One hot encode category label entries, creating a map from
-        their label to one hot encoded index
-        """
-        self.cat_map = {}
-        unique_list = self.labels['category_label'].unique()
-        for i, cat in enumerate(unique_list):
-            self.cat_map[cat] = i
-
-        def one_hot_encode(category):
-            ohe = np.zeros(self.n_top_labels)
-            ohe[self.cat_map[category]] = 1
-            return ohe
-
-        self.labels['category_label'] = self.labels['category_label'
-                                                    ].apply(one_hot_encode)
+        return cat_labels
 
     def set_data_target(self, target, chunksize, model_name=''):
         """Set the type of data, how much of it to load, and how to save it"""
