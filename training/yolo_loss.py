@@ -46,14 +46,6 @@ class YoloLoss:
             [1, 1, 1, 1, 2]), tf.float32)
         self.c_xy = self._create_offset_map()
 
-        # Do here to avoid overhead from repeated variable creation
-        self.truth_array = tf.get_variable("truth_array",
-                                           (self.batch_size,
-                                            grid_dims[0], grid_dims[1],
-                                            self.n_anchors, self.n_classes + 5),
-                                           dtype=tf.float32,
-                                           initializer=tf.zeros_initializer)
-
     def _convert_model_outputs(self, y_pred):
         """
         Takes values predicted by model and converts them to more interpretable
