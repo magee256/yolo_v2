@@ -9,6 +9,8 @@ import os
 import pandas as pd
 from functools import partial
 
+import pdb
+
 # Needed to apply preprocessing to labels. 
 # I don't like introducing model dependent processing to Labels.
 # Consider simplifying __next__ and transferring responsibility elsewhere
@@ -40,6 +42,8 @@ class Labels:
         def strip_ext_and_parent(path):
             parent = path.split(os.sep)[0]
             ext = os.path.splitext(path)[1]
+            if not ext:
+                return path[len(parent):]
             return path[len(parent):-len(ext)]
 
         self.labels['image_name'] = self.labels['image_name']\

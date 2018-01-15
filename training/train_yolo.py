@@ -8,12 +8,22 @@ section of: https://arxiv.org/pdf/1612.08242.pdf
 
 import argparse
 from keras.layers import InputLayer, Conv2D
+from keras.callbacks import TensorBoard, ModelCheckpoint, Callback
 from keras import models
+from keras import backend as K
 import numpy as np
+import pandas as pd
 from skimage.transform import rescale
+from sklearn.model_selection import StratifiedShuffleSplit
+import tensorflow as tf
 
-from utils.io import Labels
+from utils.model_morphing import sub_in_layer
 from training.yolo_loss import YoloLoss
+from utils.io import Labels
+
+from keras.callbacks import LambdaCallback
+import pickle
+import pdb
 
 
 def build_arg_dict(arg_list):
@@ -26,10 +36,24 @@ def build_arg_dict(arg_list):
     return arg_dict
 
 
+class SummaryLoss:
+    def __init__(self, yolo_loss):
+        self.loss = yolo_loss
+
+    def local_loss(self, y_true, y_pred):
+        return self.loss.loc_loss
+
+    def confidence_loss(self, y_true, y_pred):
+        return self.loss.obj_conf_loss
+
+    def category_loss(self, y_true, y_pred):
+        return self.loss.category_loss
+        
+
 class YoloModel:
     def __init__(self, model_file, anchor_file, input_dim, n_classes):
         self.anchors = self._read_anchor_boxes(anchor_file)
-        self.n_anchors = len(anchors)
+        self.n_anchors = len(self.anchors)
         self.n_classes = n_classes
         self.input_dim = input_dim
 
@@ -50,10 +74,10 @@ class YoloModel:
         """
         with open(anchor_file, 'r') as fanchors:
             anchors = []
-            for anchor in fanchors:
-                w, h = anchor.split(',')
-            anchors.append((float(w), float(h)))
-        return np.array(anchors)
+            dimensions = next(fanchors).split(',')
+            for i in range(0, len(dimensions), 2):
+                anchors.append(dimensions[i:i+2])
+        return np.array(anchors, dtype=np.float32)
 
     def _prep_model(self):
         """
@@ -63,12 +87,16 @@ class YoloModel:
         :param model_file: File to a pretrained YOLO v2 model
         :return: The prepared model
         """
+        # Output dimension changes based on number of classes predicted
+        out_layer = Conv2D(self.n_anchors * (5 + self.n_classes),
+                1, name='custom_conv2d')
+        relinked_layer = self.model.layers[-2]
+        relinked_layer.outbound_nodes = []
+        out = out_layer(relinked_layer.get_output_at(-1))
+        self.model = models.Model(self.model.get_input_at(-1), out)
+
         self.resize(self.input_dim)
 
-        # Output dimension changes based on number of classes predicted
-        out_layer = Conv2D(self.n_anchors * (5 + self.n_classes), 1)
-        out = out_layer(self.model.layers[-2].get_output)
-        self.model = models.Model(model.get_input_at(-1), out)
 
     def set_train_status(self, status, out_matches=False):
         """
@@ -98,7 +126,7 @@ class YoloModel:
         checkpointer = ModelCheckpoint(
             filepath='model_data/{}.hdf5'.format(file_label),
             verbose=1, save_best_only=True)
-        tb = keras.callbacks.TensorBoard(
+        tb = TensorBoard(
             log_dir='model_data/{}_tb'.format(file_label),
             histogram_freq=0,
             write_graph=True, write_images=True)
@@ -108,13 +136,14 @@ class YoloModel:
         rescaled_valid = rescaled_image_gen(valid_labels, self.input_dim,
                                             self.n_classes, self.n_anchors)
 
-        history = model.fit_generator(rescaled_train,
-                                      steps_per_epoch=train_labels.n_chunk,
-                                      epochs=epochs,
-                                      verbose=1,
-                                      callbacks=[checkpointer, tb],
-                                      validation_data=rescaled_valid,
-                                      validation_steps=valid_labels.n_chunk)
+        history = self.model.fit_generator(
+                rescaled_train,
+                steps_per_epoch=train_labels.n_chunk,
+                epochs=epochs,
+                verbose=1,
+                callbacks=[checkpointer, tb], #, summary],
+                validation_data=rescaled_valid,
+                validation_steps=valid_labels.n_chunk)
         return history
 
     def resize(self, new_input_dim):
@@ -125,8 +154,10 @@ class YoloModel:
         :return: model that accepts input of dimension input_shape
         """
         inp = InputLayer(new_input_dim)
-        self.model(inp.output)
-        self.model = models.Model(inp.input, self.model.get_output_at(-1))
+        sub_in_layer(self.model, self.model.layers[0].name, inp)
+        self.model = models.Model(
+                inp.input,
+                self.model.layers[-1].get_output_at(-1))
         self.input_dim = new_input_dim
         self._compile_model()
 
@@ -138,9 +169,17 @@ class YoloModel:
         :param input_dim:
         :return:
         """
-        out_dim = self.input_dim // 32  # factor of 32 decrease in input
+        out_dim = np.array(self.input_dim[:2]) // 32  # factor of 32 decrease in input
         yolo_loss = YoloLoss(self.anchors * out_dim, self.n_classes, out_dim)
-        model.compile('adam', loss=yolo_loss)
+        summary = SummaryLoss(yolo_loss)
+
+        self.model.compile('adam', 
+                           loss=yolo_loss.loss,
+                           metrics=[
+                               summary.local_loss,
+                               summary.confidence_loss,
+                               summary.category_loss,
+                               ])
 
 
 def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
@@ -193,28 +232,33 @@ def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
     truth_array[sample.astype(np.int32), c, r, :, :] = np.reshape(
         object_mask,
         (n_objects, 1, n_classes + 5))
+    truth_array = np.reshape(truth_array,
+            [n_samples, grid_dims[0], grid_dims[1], n_anchors*(5 + n_classes)])
     return truth_array.astype(np.float32)
 
 
 def rescaled_image_gen(labels, target_dim, n_classes, n_anchors):
     """
     Scales all square images returned from a Labels object to be
-    target_dim x target_dim in size
+    target_dim in dimension. 
 
     :param labels: A labels object set to target proc_image
-    :param target_dim: The desired image dimension
+    :param target_dim: The desired image dimensions. Must be square.
     :returns: image and bounding box info
     """
+    target_dim = np.array(target_dim)
     while True:
         chunk = next(labels)
         cur_shape = chunk['data'].values[0].shape
         chunk['data'] = chunk['data'].apply(rescale,
-                                            scale=target_dim/cur_shape[0])
+                                            scale=target_dim[0]/cur_shape[0])
 
-        truth_vals = expand_truth_vals(chunk['category_label',
+        truth_vals = expand_truth_vals(chunk[['category_label',
                                              'center_x', 'center_y',
-                                             'width_x', 'width_y'].values,
-                                       n_classes, target_dim/32, n_anchors)
+                                             'width_x', 'width_y']].values,
+                                       n_classes,
+                                       (target_dim/32).astype(np.int32),
+                                       n_anchors)
         yield np.stack(chunk['data'].values), truth_vals
 
 
@@ -233,7 +277,8 @@ def stratified_train_val_test(y):
 
 def subset_labels(indices, labels, chunksize, name):
     sub_labels = Labels(labels.labels.iloc[indices, :],
-                        labels.image_path_prefix)
+                        labels.parent_dir,
+                        labels.n_images_loaded)
     sub_labels.set_data_target('proc_image', chunksize, name)
     return sub_labels
 
@@ -255,14 +300,21 @@ def train_yolo(arg_dict):
 
     # Train output layer with smallest considered image dimension
     yolo_model.set_train_status(False, out_matches=False)
-    yolo_model.train(train_labels, valid_labels, epochs=500, file_label='init')
+    hist = yolo_model.train(train_labels, valid_labels, 
+                            epochs=3, file_label='init')
+    yolo_model.set_train_status(True, out_matches=True)
+
+    with open('model_data/init_hist.pkl', 'wb') as fhist:
+        pickle.dump(hist.history, fhist)
 
     # Dimensions copied from YOLO 9000 paper
     input_dims = list(range(320, 609, 64))
-    for _ in range(20):
-        inp = choice(input_dims)
+    for i in range(20):
+        inp = np.random.choice(input_dims)
         yolo_model.resize((inp, inp, 3))
-        yolo_model.train(train_labels, valid_labels, epochs=30)
+        hist = yolo_model.train(train_labels, valid_labels, epochs=3)
+        with open('model_data/hist_{}.pkl'.format(i), 'wb') as fhist:
+            pickle.dump(hist.history, fhist)
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@ All functions used to define the YOLO loss function
 import keras.backend as K
 import tensorflow as tf
 import numpy as np
+import pdb
 
 
 class YoloLoss:
@@ -238,7 +239,7 @@ class YoloLoss:
         noobj_coeff = 0.5
         obj_coeff = 1.0
         # weight_conf eliminates values that don't have/have (in that order)
-        # an object in them (previous implementation weighted positive higher than specified)
+        # an object in them
         weight_conf = noobj_coeff*(1. - true_box_conf) + obj_coeff*true_box_conf
         obj_conf_loss = tf.pow(true_box_conf - pred_box_conf, 2) * weight_conf
         obj_conf_loss = tf.reshape(obj_conf_loss,
@@ -297,15 +298,32 @@ class YoloLoss:
         # Modify so that 1_ij instead of 1_i used in last term
         shape = [-1, self.grid_w, self.grid_h, self.n_anchors, self.n_classes+5]
         y_pred = tf.reshape(y_pred, shape)
+        y_true = tf.reshape(y_true, shape)
 
         pred_box_xy, pred_box_wh, pred_box_conf, pred_box_prob = \
                      self._convert_model_outputs(y_pred)
         true_box_xy, true_box_wh, true_box_conf, true_box_prob = \
                      self._convert_truth_values(y_true, pred_box_xy, pred_box_wh)
 
-        loc_loss = self._localization_loss(true_box_conf, true_box_xy, true_box_wh, pred_box_xy, pred_box_wh)
-        obj_conf_loss = self._object_confidence_loss(true_box_conf, pred_box_conf)
-        category_loss = self._category_loss(true_box_conf, true_box_prob, pred_box_prob)
+        loc_loss = self._localization_loss(
+                true_box_conf, true_box_xy, true_box_wh,
+                pred_box_xy, pred_box_wh)
+        obj_conf_loss = self._object_confidence_loss(
+                true_box_conf, 
+                pred_box_conf)
+        category_loss = self._category_loss(
+                true_box_conf, true_box_prob, 
+                pred_box_prob)
+
+        # Storing allows use as a metric
+        self.loc_loss = loc_loss
+        self.obj_conf_loss = obj_conf_loss
+        self.category_loss = category_loss
+
+        # Track info with summary
+        tf.summary.scalar('local', loc_loss)
+        tf.summary.scalar('obj_conf', obj_conf_loss)
+        tf.summary.scalar('cat', category_loss)
 
         loss = loc_loss + obj_conf_loss + category_loss
         return loss

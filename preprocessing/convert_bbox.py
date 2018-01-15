@@ -106,7 +106,7 @@ def prep_image_data(arg_dict):
 
 def convert_bbox(arg_dict):
     labels = prep_image_data(arg_dict)
-    target_width = 248
+    target_width = 608
     standardize_img = Pipeline([
         ('scale', ScaleImages(target_width)),
         ('crop', CropImages(target_width)),
