@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 
 from utils.io import Labels
 from preprocessing.preproc import ScaleImages, PadImages, CropImages
+import pdb
 
 
 def build_arg_dict(arg_list):
@@ -37,13 +38,14 @@ def update_bounding_box(old_shape, new_shape, row):
     # First index specifies rows of image, second index columns.
     # This means first index is y and second x
     scale_factor = new_shape[0] / old_shape[0]
-    mod_x = new_shape[1] - old_shape[1] * scale_factor
+    offset = (new_shape[1] - old_shape[1] * scale_factor)/2
 
     # May end up a little off-center
     row['y_1'] = row['y_1'] * scale_factor
     row['y_2'] = row['y_2'] * scale_factor
-    row['x_1'] = row['x_1'] * scale_factor + mod_x / 2
-    row['x_2'] = row['x_2'] * scale_factor + mod_x / 2
+    row['x_1'] = row['x_1'] * scale_factor + offset
+    row['x_2'] = row['x_2'] * scale_factor + offset
+    return row[['x_1', 'x_2', 'y_1', 'y_2']]
 
 
 def deepfash_to_yolo(image_shape, row):
@@ -67,6 +69,7 @@ def deepfash_to_yolo(image_shape, row):
     #   large y
     #   small x ----------> large x
     #
+    # This means image_shape[0] corresponds to y values
     # The YOLO format seems to match (but use fractions)
     frac_x1 = row['x_1'] / image_shape[1]
     frac_x2 = row['x_2'] / image_shape[1]
@@ -75,8 +78,8 @@ def deepfash_to_yolo(image_shape, row):
 
     width_x = frac_x2 - frac_x1
     width_y = frac_y2 - frac_y1
-    center_x = frac_x1 + width_x / 2
-    center_y = frac_y1 + width_y / 2
+    center_x = (frac_x1 + frac_x2)/2
+    center_y = (frac_y1 + frac_y2)/2
 
     return [row['image_name'], row['category_label'],
             center_x, center_y, width_x, width_y]
@@ -122,11 +125,12 @@ def convert_bbox(arg_dict):
             chunk = next(labels)
 
             # Update the bounding box coordinates
-            chunk.apply(lambda x: update_bounding_box(
-                                    x['data'].shape,
-                                    (target_width, target_width),
-                                    x),
-                        axis=1)
+            chunk[['x_1', 'x_2', 'y_1', 'y_2']] = chunk.apply(
+                    lambda x: update_bounding_box(
+                        x['data'].shape,
+                        (target_width, target_width),
+                        x),
+                    axis=1)
 
             # Process the images and save them
             chunk['data'] = chunk['data'].apply(standardize_img.transform)

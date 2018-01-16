@@ -10,11 +10,12 @@ import os
 import pandas as pd
 from sklearn.pipeline import Pipeline
 import tempfile
-from PIL import Image
+from skimage.io import imread
 
 from preprocessing.convert_bbox import update_bounding_box, deepfash_to_yolo
 from preprocessing.convert_bbox import convert_bbox
 from preprocessing.preproc import ScaleImages, PadImages, CropImages
+import pdb
 
 
 ## Utilities for manual testing
@@ -199,8 +200,8 @@ def test_deepfash_to_yolo():
     tol = 1e-8
     assert convert[0] == "fake_name.jpg"
     assert convert[1] == 1
-    assert np.isclose(convert[2], 0.375, atol=tol)
-    assert np.isclose(convert[3], (70 + (300 - 70)/2)/300, atol=tol)
+    assert np.isclose(convert[2], ((50 + 250)/2)/400, atol=tol)
+    assert np.isclose(convert[3], ((70 + 300)/2)/300, atol=tol)
     assert np.isclose(convert[4], (250 - 50)/400, atol=tol)
     assert np.isclose(convert[5], (300 - 70)/300, atol=tol)
 
@@ -311,28 +312,63 @@ def tempinput(data):
         os.unlink(temp.name)
 
 def test_convert_bbox():
-    img1 = Image.fromarray(np.random.randint(0, 256, (300, 300, 3)), 'RGB')
-    img2 = Image.fromarray(np.random.randint(0, 256, (300, 205, 3)), 'RGB')
-    img3 = Image.fromarray(np.random.randint(0, 256, (300, 207, 3)), 'RGB')
+    img_shapes = np.array([(300, 300, 3),
+                           (300, 205, 3),
+                           (300, 207, 3)])
 
-
-    with tempinput(img1.tobytes()) as fimg1,\
-         tempinput(img2.tobytes()) as fimg2,\
-         tempinput(img3.tobytes()) as fimg3:
-        category_file = tempinput(b"289222\n" \
-            + b"image_name  category_label\n" \
-            + ("{}     3\n".format(fimg1)).encode('ascii') \
-            + ("{}     3\n".format(fimg2)).encode('ascii') \
-            + ("{}     3\n".format(fimg3)).encode('ascii'))
-        bbox_file = tempinput(b"289222\n" \
-            + b"image_name  x_1  y_1  x_2  y_2\n" \
-            + ("{}     072 079 232 273\n".format(fimg1)).encode('ascii') \
-            + ("{}     067 059 155 161\n".format(fimg2)).encode('ascii') \
-            + ("{}     065 065 156 200\n".format(fimg3)).encode('ascii'))
-        with category_file as fcat, bbox_file as fbbox:
-            arg_dict = {
-                    'category_file': fcat,
-                    'bbox_file': fbbox,
-                    'image_dir': '',
-                    }
+    category_file = tempinput(b"289222\n" \
+        + b"image_name  category_label\n" \
+        + b"img/img1.jpg     3\n" \
+        + b"img/img2.jpg     3\n" \
+        + b"img/img3.jpg     3\n")
+    bbox_file = tempinput(b"289222\n" \
+        + b"image_name  x_1  y_1  x_2  y_2\n" \
+        + b"img/img1.jpg     072 079 232 273\n" \
+        + b"img/img2.jpg     067 059 155 161\n" \
+        + b"img/img3.jpg     065 065 156 200\n")
+    with category_file as fcat, bbox_file as fbbox:
+        arg_dict = {
+                'category_file': fcat,
+                'bbox_file': fbbox,
+                'image_dir': 'tests/',
+                }
+        yolo_bbox = os.sep.join(
+                fbbox.split(os.sep)[:-1]
+                + ['yolo_' + fbbox.split(os.sep)[-1]])
+        try:
             convert_bbox(arg_dict)
+            combo_df = pd.read_csv(yolo_bbox)
+        finally:
+            os.unlink(yolo_bbox)
+        
+        proc_img1 = imread('tests/proc_img/img1.jpg')
+        proc_img2 = imread('tests/proc_img/img2.jpg')
+        proc_img3 = imread('tests/proc_img/img3.jpg')
+        target_width = 608
+
+        assert (proc_img1.shape == (target_width, target_width, 3))
+        assert (proc_img2.shape == (target_width, target_width, 3))
+        assert (proc_img3.shape == (target_width, target_width, 3))
+
+        column_list = ['image_name', 'category_label',
+                'center_x', 'center_y',
+                'width_x', 'width_y']
+        assert all(x in combo_df.columns for x in column_list)
+
+
+        x_1 = np.array([72, 67, 65])
+        y_1 = np.array([79, 59, 65])
+        x_2 = np.array([232, 155, 156])
+        y_2 = np.array([273, 161, 200])
+
+        scale_factor = (target_width/img_shapes[:, 0])
+        offset = (target_width - img_shapes[:, 1]*scale_factor)/2
+        cx = (scale_factor*(x_2 + x_1)/2 + offset)/target_width
+        cy = (scale_factor*(y_2 + y_1)/2)/target_width
+        wx = (scale_factor*(x_2 - x_1))/target_width
+        wy = (scale_factor*(y_2 - y_1))/target_width
+
+        assert (np.isclose(combo_df['center_x'].values, cx)).all()
+        assert (np.isclose(combo_df['center_y'].values, cy)).all()
+        assert (np.isclose(combo_df['width_x'].values, wx)).all()
+        assert (np.isclose(combo_df['width_y'].values, wy)).all()
