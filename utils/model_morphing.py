@@ -9,8 +9,7 @@ from keras.layers import InputLayer
 def sub_in_layer(model, sub_out_name, sub_in_layer):
     """
     Replaces a node with an input layer and updates the model graph to reflect that
-    change. Currently does not remove references to replaced nodes - prevents rerunning.
-    Unable to handle layers with mulitple inbound_nodes. 
+    change. Unable to handle layers with mulitple inbound_nodes. 
     """
     head_dict = {sub_out_name: sub_in_layer.output}  # Assumes one output
     sub_out_layer = model.get_layer(sub_out_name)
@@ -22,8 +21,9 @@ def sub_in_layer(model, sub_out_name, sub_in_layer):
             modified = update_graph(model, head_dict, node, out_node_list)
             continue_loop = continue_loop | modified
         if not continue_loop:
-            print('Could not find reference to inbound layer. This likely means'
-                 ' output from a layer before the subbed-in layer is required. ')
+            raise ValueError('Could not find reference to inbound layer. This'
+                ' likely means output from a layer before the subbed out layer'
+                ' is needed.')
     
 
 def update_graph(model, head_dict, out_node, out_node_list):
@@ -38,8 +38,8 @@ def update_graph(model, head_dict, out_node, out_node_list):
 
 
 def input_ref_present(out_node, head_dict):
-    return all( layer_name in head_dict.keys() 
-               for layer_name in out_node.get_config()['inbound_layers'] )
+    return all(layer_name in head_dict.keys() 
+               for layer_name in out_node.get_config()['inbound_layers'])
                     
 
 def relink_graph(model, out_node, head_dict):
@@ -55,9 +55,11 @@ def relink_graph(model, out_node, head_dict):
                                   + ' (has multiple inbound_nodes). Unable to relink graph.')
     
     if len(out_node.get_config()['inbound_layers']) == 1:
+        new_link_layer.inbound_nodes = []
         x = new_link_layer(head_dict[out_node.get_config()['inbound_layers'][0]])
     else:
-        inbound_list = [ head_dict[l] for l in out_node.get_config()['inbound_layers'] ]
+        new_link_layer.inbound_nodes = []
+        inbound_list = [head_dict[l] for l in out_node.get_config()['inbound_layers']]
         x = new_link_layer(inbound_list)
     head_dict[new_link_name] = x
     return new_link_layer.outbound_nodes

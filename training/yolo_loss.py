@@ -207,10 +207,11 @@ class YoloLoss:
         """
         loss_coeff = 5.0
         # Average over anchor boxes with matching IoU. Very rare, include?
-        anchor_averaging = tf.equal(true_box_conf, tf.reduce_max(true_box_conf, 3, keep_dims=True))
-        anchor_averaging = tf.to_float(anchor_averaging)
-        true_box_conf = true_box_conf/tf.reduce_sum(anchor_averaging, 3, keep_dims=True)
+        # anchor_averaging = tf.equal(true_box_conf, tf.reduce_max(true_box_conf, 3, keep_dims=True))
+        # anchor_averaging = tf.to_float(anchor_averaging)
+        # true_box_conf = true_box_conf/tf.reduce_sum(anchor_averaging, 3, keep_dims=True)
 
+        self.true_box_conf = tf.reduce_sum(true_box_conf)
         weight_coor = loss_coeff * tf.concat(4 * [true_box_conf], 4)
         true_boxes = tf.concat([true_box_xy, true_box_wh], 4)
         pred_boxes = tf.concat([pred_box_xy, pred_box_wh], 4)

@@ -3,14 +3,21 @@ Contains the unit tests for convert_bbox.py
 
 These tests assume the use of pytest
 """
+from contextlib import contextmanager
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 from sklearn.pipeline import Pipeline
+import tempfile
+from PIL import Image
 
 from preprocessing.convert_bbox import update_bounding_box, deepfash_to_yolo
+from preprocessing.convert_bbox import convert_bbox
 from preprocessing.preproc import ScaleImages, PadImages, CropImages
 
+
+## Utilities for manual testing
 
 def make_old_bbox(row):
     """
@@ -93,6 +100,8 @@ def plot_img_and_bound_box(img, row):
     ax[2].plot(bbox[:, 0], bbox[:, 1])
     plt.show()
 
+
+## Begin unit tests
 
 def test_update_bounding_box():
     # First index specifies rows of image, second index columns.
@@ -288,3 +297,42 @@ def test_crop_images():
     assert wo_crop.iloc[4].shape[1] == 370
     assert with_crop.iloc[4].shape[0] == 540
     assert with_crop.iloc[4].shape[1] == 540
+
+
+# Taken from: https://stackoverflow.com/questions/11892623
+@contextmanager
+def tempinput(data):
+    temp = tempfile.NamedTemporaryFile(delete=False)
+    temp.write(data)
+    temp.close()
+    try:
+        yield temp.name
+    finally:
+        os.unlink(temp.name)
+
+def test_convert_bbox():
+    img1 = Image.fromarray(np.random.randint(0, 256, (300, 300, 3)), 'RGB')
+    img2 = Image.fromarray(np.random.randint(0, 256, (300, 205, 3)), 'RGB')
+    img3 = Image.fromarray(np.random.randint(0, 256, (300, 207, 3)), 'RGB')
+
+
+    with tempinput(img1.tobytes()) as fimg1,\
+         tempinput(img2.tobytes()) as fimg2,\
+         tempinput(img3.tobytes()) as fimg3:
+        category_file = tempinput(b"289222\n" \
+            + b"image_name  category_label\n" \
+            + ("{}     3\n".format(fimg1)).encode('ascii') \
+            + ("{}     3\n".format(fimg2)).encode('ascii') \
+            + ("{}     3\n".format(fimg3)).encode('ascii'))
+        bbox_file = tempinput(b"289222\n" \
+            + b"image_name  x_1  y_1  x_2  y_2\n" \
+            + ("{}     072 079 232 273\n".format(fimg1)).encode('ascii') \
+            + ("{}     067 059 155 161\n".format(fimg2)).encode('ascii') \
+            + ("{}     065 065 156 200\n".format(fimg3)).encode('ascii'))
+        with category_file as fcat, bbox_file as fbbox:
+            arg_dict = {
+                    'category_file': fcat,
+                    'bbox_file': fbbox,
+                    'image_dir': '',
+                    }
+            convert_bbox(arg_dict)

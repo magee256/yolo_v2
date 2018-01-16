@@ -21,9 +21,10 @@ from utils.model_morphing import sub_in_layer
 from training.yolo_loss import YoloLoss
 from utils.io import Labels
 
-from keras.callbacks import LambdaCallback
+from keras.utils import plot_model
 import pickle
 import pdb
+from time import perf_counter
 
 
 def build_arg_dict(arg_list):
@@ -48,6 +49,9 @@ class SummaryLoss:
 
     def category_loss(self, y_true, y_pred):
         return self.loss.category_loss
+
+    def summed_box_conf(self, y_true, y_pred):
+        return self.loss.true_box_conf
         
 
 class YoloModel:
@@ -179,6 +183,7 @@ class YoloModel:
                                summary.local_loss,
                                summary.confidence_loss,
                                summary.category_loss,
+                               summary.summed_box_conf,
                                ])
 
 
@@ -301,7 +306,7 @@ def train_yolo(arg_dict):
     # Train output layer with smallest considered image dimension
     yolo_model.set_train_status(False, out_matches=False)
     hist = yolo_model.train(train_labels, valid_labels, 
-                            epochs=3, file_label='init')
+                            epochs=2, file_label='init')
     yolo_model.set_train_status(True, out_matches=True)
 
     with open('model_data/init_hist.pkl', 'wb') as fhist:
@@ -309,10 +314,12 @@ def train_yolo(arg_dict):
 
     # Dimensions copied from YOLO 9000 paper
     input_dims = list(range(320, 609, 64))
-    for i in range(20):
+    for i in range(5):
         inp = np.random.choice(input_dims)
         yolo_model.resize((inp, inp, 3))
-        hist = yolo_model.train(train_labels, valid_labels, epochs=3)
+        plot_model(yolo_model.model,
+                'model_data/mod_{}.png'.format(i))
+        hist = yolo_model.train(train_labels, valid_labels, epochs=2)
         with open('model_data/hist_{}.pkl'.format(i), 'wb') as fhist:
             pickle.dump(hist.history, fhist)
 
