@@ -37,7 +37,7 @@ def build_arg_dict(arg_list):
     return arg_dict
 
 
-class SummaryLoss:
+class MetricContainer:
     def __init__(self, yolo_loss):
         self.loss = yolo_loss
 
@@ -53,6 +53,61 @@ class SummaryLoss:
     def summed_box_conf(self, y_true, y_pred):
         return self.loss.true_box_conf
         
+    def max_true_center(self, y_true, y_pred):
+        return self.loss.maxt_center
+        
+    def min_true_center(self, y_true, y_pred):
+        return self.loss.mint_center
+        
+    def max_pred_center(self, y_true, y_pred):
+        return self.loss.maxp_center
+        
+    def min_pred_center(self, y_true, y_pred):
+        return self.loss.minp_center
+        
+    def max_true_width(self, y_true, y_pred):
+        return self.loss.maxt_width
+        
+    def min_true_width(self, y_true, y_pred):
+        return self.loss.mint_width
+        
+    def max_pred_width(self, y_true, y_pred):
+        return self.loss.maxp_width
+        
+    def min_pred_width(self, y_true, y_pred):
+        return self.loss.minp_width
+        
+    def max_pred_raw_width(self, y_true, y_pred):
+        return self.loss.maxp_raw_width
+        
+    def min_pred_raw_width(self, y_true, y_pred):
+        return self.loss.minp_raw_width
+        
+    def mean_pred_raw_width(self, y_true, y_pred):
+        return self.loss.minp_raw_width
+
+    def max_norm(self, y_true, y_pred):
+        return self.loss.max_norm
+        
+    def min_norm(self, y_true, y_pred):
+        return self.loss.min_norm
+        
+    def max_squeeze(self, y_true, y_pred):
+        return self.loss.max_sqz
+        
+    def min_squeeze(self, y_true, y_pred):
+        return self.loss.min_sqz
+        
+    def mean_norm_deviation(self, y_true, y_pred):
+        return self.loss.norm_dev_avg
+        
+    def max_wh_deviation(self, y_true, y_pred):
+        return self.loss.max_dev_wh
+        
+    def min_wh_deviation(self, y_true, y_pred):
+        return self.loss.min_dev_wh
+        
+
 
 class YoloModel:
     def __init__(self, model_file, anchor_file, input_dim, n_classes):
@@ -174,17 +229,16 @@ class YoloModel:
         :return:
         """
         out_dim = np.array(self.input_dim[:2]) // 32  # factor of 32 decrease in input
-        yolo_loss = YoloLoss(self.anchors * out_dim, self.n_classes, out_dim)
-        summary = SummaryLoss(yolo_loss)
+        yolo_loss = YoloLoss(self.anchors, self.n_classes, out_dim)
+        summary = MetricContainer(yolo_loss)
+        metrics = [getattr(summary, name)
+                   for name in dir(summary)
+                   if (not name.startswith('_')) and (name != 'loss')]
 
         self.model.compile('adam', 
                            loss=yolo_loss.loss,
-                           metrics=[
-                               summary.local_loss,
-                               summary.confidence_loss,
-                               summary.category_loss,
-                               summary.summed_box_conf,
-                               ])
+                           metrics=metrics
+                           )
 
 
 def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
@@ -264,6 +318,10 @@ def rescaled_image_gen(labels, target_dim, n_classes, n_anchors):
                                        n_classes,
                                        (target_dim/32).astype(np.int32),
                                        n_anchors)
+        with open('model_data/{}_truth_{}.pkl'.format(
+            labels.name, labels.iter), 'wb') as dmp:
+            pickle.dump(truth_vals, dmp)
+            labels.iter += 1
         yield np.stack(chunk['data'].values), truth_vals
 
 
@@ -302,10 +360,15 @@ def train_yolo(arg_dict):
         labels.labels['category_label'].values)
     train_labels = subset_labels(train, labels, chunksize, '')
     valid_labels = subset_labels(valid, labels, chunksize, '')
+    
+    train_labels.iter = 0
+    train_labels.name = 'train'
+    valid_labels.iter = 0
+    valid_labels.name = 'valid'
 
     # Train output layer with smallest considered image dimension
     yolo_model.set_train_status(False, out_matches=False)
-    hist = yolo_model.train(train_labels, valid_labels, 
+    hist = yolo_model.train(train_labels, valid_labels,
                             epochs=2, file_label='init')
     yolo_model.set_train_status(True, out_matches=True)
 
@@ -314,11 +377,13 @@ def train_yolo(arg_dict):
 
     # Dimensions copied from YOLO 9000 paper
     input_dims = list(range(320, 609, 64))
-    for i in range(5):
+    for i in range(3):
         inp = np.random.choice(input_dims)
         yolo_model.resize((inp, inp, 3))
-        plot_model(yolo_model.model,
-                'model_data/mod_{}.png'.format(i))
+        with open('model_data/mod_{}.pkl'.format(i), 'wb') as fmod:
+            lst = []
+            yolo_model.model.summary(print_fn=lst.append)
+            pickle.dump('\n'.join(lst), fmod)
         hist = yolo_model.train(train_labels, valid_labels, epochs=2)
         with open('model_data/hist_{}.pkl'.format(i), 'wb') as fhist:
             pickle.dump(hist.history, fhist)
