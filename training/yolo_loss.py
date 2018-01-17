@@ -15,19 +15,18 @@ class YoloLoss:
 
     https://github.com/datlife/yolov2 yolo_loss function used as base.
     """
-    def __init__(self, anchors, n_classes, grid_dims, batch_size=32):
+    def __init__(self, anchors, n_classes, grid_dims):
         """
         Preps values used throughout the loss calculation for a given input
         image dimension.
 
         :param anchors: A series of width and height tuples.
-                        width and height \in [0, grid_dims].
+                        width and height \in [0, 1].
         :param n_classes: The number of classes being predicted.
         :param grid_dims: The width and height of the grid classifications
                           performed on.
         """
         self.anchors = tf.cast(anchors, dtype=tf.float32)
-        self.batch_size = batch_size
 
         # Output dimensions
         self.grid_h = tf.cast(grid_dims[0], tf.int32)
@@ -74,34 +73,20 @@ class YoloLoss:
         variance = tf.constant(.16, dtype=tf.float32)
         anchors = tf.reshape(self.anchors, 
                              [1, 1, 1, self.n_anchors, 2])
-        dist = tf.distributions.Normal(loc=anchors, scale=tf.sqrt(variance))
 
         squeezed_wh = tf.sigmoid(raw_pred_wh)
-        self.max_sqz = tf.reduce_max(squeezed_wh)
-        self.min_sqz = tf.reduce_min(squeezed_wh)
-
         high_lim = tf.minimum(squeezed_wh + offset, 1.) - anchors
         tiny_lim = tf.maximum(squeezed_wh - offset, 0.) - anchors
 
-        # Approximates the cumulative normal distribution.
-        # Backprop fails if using the actual cdf (tf version 1.3.1)
+        # sigmoid approximates the cumulative normal distribution.
+        # Backprop seems to fail if using the actual cdf (tf version 1.3.1)
         # Parameters taken from: doi:10.3926/jiem.2009.v2n1.p114-127
         # equation 8
         norm = tf.sigmoid(1.702*(high_lim)/tf.sqrt(variance)) \
              - tf.sigmoid(1.702*(tiny_lim)/tf.sqrt(variance))
-        true_norm = dist.cdf(high_lim + anchors) - dist.cdf(tiny_lim + anchors)
-
-        self.max_norm = tf.reduce_max(norm)
-        self.min_norm = tf.reduce_min(norm)
-        self.norm_dev_avg = tf.reduce_mean(tf.abs(true_norm - norm))
-
         deviation_wh = -tf.sqrt(variance/tf.constant(2*np.pi)) \
                 *(tf.exp(-tf.pow(high_lim, 2)/(2.0*variance))
                 - tf.exp(-tf.pow(tiny_lim, 2)/(2.0*variance)))/norm
-
-        self.max_dev_wh = tf.reduce_max(deviation_wh)
-        self.min_dev_wh = tf.reduce_min(deviation_wh)
-
         pred_box_wh = tf.sqrt(tf.clip_by_value(anchors + deviation_wh, 0., 1.))
         return pred_box_wh
 
@@ -247,22 +232,10 @@ class YoloLoss:
         anchor_averaging = tf.equal(true_box_conf, tf.reduce_max(true_box_conf, 3, keep_dims=True))
         anchor_averaging = tf.to_float(anchor_averaging)
         true_box_conf = true_box_conf/tf.reduce_sum(anchor_averaging, 3, keep_dims=True)
-        self.true_box_conf = tf.reduce_sum(true_box_conf)
 
         weight_coor = loss_coeff * tf.concat(4 * [true_box_conf], 4)
         true_boxes = tf.concat([true_box_xy, true_box_wh], 4)
         pred_boxes = tf.concat([pred_box_xy, pred_box_wh], 4)
-
-        self.maxt_center = tf.reduce_max(true_box_xy)
-        self.mint_center = tf.reduce_min(true_box_xy)
-        self.maxp_center = tf.reduce_max(pred_box_xy)
-        self.minp_center = tf.reduce_min(pred_box_xy)
-
-        self.maxt_width = tf.reduce_max(true_box_wh)
-        self.mint_width = tf.reduce_min(true_box_wh)
-        self.maxp_width = tf.reduce_max(pred_box_wh)
-        self.minp_width = tf.reduce_min(pred_box_wh)
-
 
         loc_loss = tf.pow(true_boxes - pred_boxes, 2) * weight_coor
         loc_loss = tf.reshape(loc_loss, [-1, self.grid_w * self.grid_h
@@ -349,10 +322,6 @@ class YoloLoss:
         shape = [-1, self.grid_w, self.grid_h, self.n_anchors, self.n_classes+5]
         y_pred = tf.reshape(y_pred, shape)
         y_true = tf.reshape(y_true, shape)
-
-        self.maxp_raw_width = tf.reduce_max(y_pred[:, :, :, :, 2:4])
-        self.minp_raw_width = tf.reduce_min(y_pred[:, :, :, :, 2:4])
-        self.avgp_raw_width = tf.reduce_mean(y_pred[:, :, :, :, 2:4])
 
         pred_box_xy, pred_box_wh, pred_box_conf, pred_box_prob = \
                      self._convert_model_outputs(y_pred)

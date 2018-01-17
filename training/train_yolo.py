@@ -50,64 +50,6 @@ class MetricContainer:
     def category_loss(self, y_true, y_pred):
         return self.loss.category_loss
 
-    def summed_box_conf(self, y_true, y_pred):
-        return self.loss.true_box_conf
-        
-    def max_true_center(self, y_true, y_pred):
-        return self.loss.maxt_center
-        
-    def min_true_center(self, y_true, y_pred):
-        return self.loss.mint_center
-        
-    def max_pred_center(self, y_true, y_pred):
-        return self.loss.maxp_center
-        
-    def min_pred_center(self, y_true, y_pred):
-        return self.loss.minp_center
-        
-    def max_true_width(self, y_true, y_pred):
-        return self.loss.maxt_width
-        
-    def min_true_width(self, y_true, y_pred):
-        return self.loss.mint_width
-        
-    def max_pred_width(self, y_true, y_pred):
-        return self.loss.maxp_width
-        
-    def min_pred_width(self, y_true, y_pred):
-        return self.loss.minp_width
-        
-    def max_pred_raw_width(self, y_true, y_pred):
-        return self.loss.maxp_raw_width
-        
-    def min_pred_raw_width(self, y_true, y_pred):
-        return self.loss.minp_raw_width
-        
-    def mean_pred_raw_width(self, y_true, y_pred):
-        return self.loss.avgp_raw_width
-
-    def max_norm(self, y_true, y_pred):
-        return self.loss.max_norm
-        
-    def min_norm(self, y_true, y_pred):
-        return self.loss.min_norm
-        
-    def max_squeeze(self, y_true, y_pred):
-        return self.loss.max_sqz
-        
-    def min_squeeze(self, y_true, y_pred):
-        return self.loss.min_sqz
-        
-    def mean_norm_deviation(self, y_true, y_pred):
-        return self.loss.norm_dev_avg
-        
-    def max_wh_deviation(self, y_true, y_pred):
-        return self.loss.max_dev_wh
-        
-    def min_wh_deviation(self, y_true, y_pred):
-        return self.loss.min_dev_wh
-        
-
 
 class YoloModel:
     def __init__(self, model_file, anchor_file, input_dim, n_classes):
@@ -237,8 +179,7 @@ class YoloModel:
 
         self.model.compile('adam', 
                            loss=yolo_loss.loss,
-                           metrics=metrics
-                           )
+                           metrics=metrics)
 
 
 def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
