@@ -11,6 +11,7 @@ def test_expand_truth_vals():
 
     ground_truth = np.array([[1, .5, .5, .5, .5]])
     truth_array = expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors)
+    truth_array = np.reshape(truth_array, (1, 13, 13, 5, 10))
     assert (truth_array[0, 6, 6, :, :] == truth_array[0, 6, 6, 0, :]).all()
     assert (truth_array[0, 6, 6, 0, 0:2] == .5).all()
     assert np.isclose(truth_array[0, 6, 6, 0, 2:4], np.sqrt(.5)).all()
@@ -21,6 +22,7 @@ def test_expand_truth_vals():
                              [5, .25, .25, .2, .1],
                              [1, .5, .5, .5, .5, 2, .75, .75, .75, .75]])
     truth_array = expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors)
+    truth_array = np.reshape(truth_array, (3, 13, 13, 5, 10))
     assert (truth_array[0, 6, 6, :, :] == truth_array[0, 6, 6, 0, :]).all()
     assert (truth_array[0, 6, 6, 0, 0:2] == .5).all()
     assert np.isclose(truth_array[0, 6, 6, 0, 2:4], np.sqrt(.5)).all()

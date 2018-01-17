@@ -293,7 +293,7 @@ def train_yolo(arg_dict):
                            input_dim=(288, 288, 3),
                            n_classes=50)
 
-    chunksize = 3000
+    chunksize = 10
     labels = pd.read_csv(arg_dict['bbox_file'])
     labels = Labels(labels, arg_dict['image_dir'],
                     n_images_loaded=50)

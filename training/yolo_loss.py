@@ -241,7 +241,6 @@ class YoloLoss:
         loc_loss = tf.reshape(loc_loss, [-1, self.grid_w * self.grid_h
                                         * self.n_anchors * 4])
 
-        # Average over samples not objects
         # Average not specified in YOLO paper turn into sum
         loc_loss = tf.reduce_sum(loc_loss)
         return loc_loss
@@ -342,11 +341,6 @@ class YoloLoss:
         self.loc_loss = loc_loss
         self.obj_conf_loss = obj_conf_loss
         self.category_loss = category_loss
-
-        # Track info with summary
-        tf.summary.scalar('local', loc_loss)
-        tf.summary.scalar('obj_conf', obj_conf_loss)
-        tf.summary.scalar('cat', category_loss)
 
         loss = loc_loss + obj_conf_loss + category_loss
         return loss
