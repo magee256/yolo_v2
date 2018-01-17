@@ -142,7 +142,7 @@ class YoloModel:
                 steps_per_epoch=train_labels.n_chunk,
                 epochs=epochs,
                 verbose=1,
-                callbacks=[checkpointer, tb], #, summary],
+                callbacks=[checkpointer, tb],
                 validation_data=rescaled_valid,
                 validation_steps=valid_labels.n_chunk)
         return history
@@ -259,10 +259,6 @@ def rescaled_image_gen(labels, target_dim, n_classes, n_anchors):
                                        n_classes,
                                        (target_dim/32).astype(np.int32),
                                        n_anchors)
-        with open('model_data/{}_truth_{}.pkl'.format(
-            labels.name, labels.iter), 'wb') as dmp:
-            pickle.dump(truth_vals, dmp)
-            labels.iter += 1
         yield np.stack(chunk['data'].values), truth_vals
 
 
@@ -293,24 +289,19 @@ def train_yolo(arg_dict):
                            input_dim=(288, 288, 3),
                            n_classes=50)
 
-    chunksize = 10
+    chunksize = 3000
     labels = pd.read_csv(arg_dict['bbox_file'])
     labels = Labels(labels, arg_dict['image_dir'],
-                    n_images_loaded=50)
+                    n_images_loaded=-1)
     train, valid, test = stratified_train_val_test(
         labels.labels['category_label'].values)
     train_labels = subset_labels(train, labels, chunksize, '')
     valid_labels = subset_labels(valid, labels, chunksize, '')
     
-    train_labels.iter = 0
-    train_labels.name = 'train'
-    valid_labels.iter = 0
-    valid_labels.name = 'valid'
-
     # Train output layer with smallest considered image dimension
     yolo_model.set_train_status(False, out_matches=False)
     hist = yolo_model.train(train_labels, valid_labels,
-                            epochs=2, file_label='init')
+                            epochs=1000, file_label='init')
     yolo_model.set_train_status(True, out_matches=True)
 
     with open('model_data/init_hist.pkl', 'wb') as fhist:
@@ -318,16 +309,20 @@ def train_yolo(arg_dict):
 
     # Dimensions copied from YOLO 9000 paper
     input_dims = list(range(320, 609, 64))
-    for i in range(3):
+    inp_choice_hist = [288]
+    for i in range(20):
         inp = np.random.choice(input_dims)
+        inp_choice_hist.append(inp)
         yolo_model.resize((inp, inp, 3))
-        with open('model_data/mod_{}.pkl'.format(i), 'wb') as fmod:
-            lst = []
-            yolo_model.model.summary(print_fn=lst.append)
-            pickle.dump('\n'.join(lst), fmod)
-        hist = yolo_model.train(train_labels, valid_labels, epochs=2)
+        # with open('model_data/mod_{}.pkl'.format(i), 'wb') as fmod:
+        #     lst = []
+        #     yolo_model.model.summary(print_fn=lst.append)
+        #     pickle.dump('\n'.join(lst), fmod)
+        hist = yolo_model.train(train_labels, valid_labels, epochs=100)
         with open('model_data/hist_{}.pkl'.format(i), 'wb') as fhist:
             pickle.dump(hist.history, fhist)
+    with open('model_data/inp_dim_choices.pkl', 'wb') as inpf:
+        pickle.dump(inp_choice_hist, inpf)
 
 
 if __name__ == '__main__':
