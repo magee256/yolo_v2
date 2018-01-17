@@ -84,7 +84,7 @@ class MetricContainer:
         return self.loss.minp_raw_width
         
     def mean_pred_raw_width(self, y_true, y_pred):
-        return self.loss.minp_raw_width
+        return self.loss.avgp_raw_width
 
     def max_norm(self, y_true, y_pred):
         return self.loss.max_norm

@@ -102,7 +102,7 @@ class YoloLoss:
         self.max_dev_wh = tf.reduce_max(deviation_wh)
         self.min_dev_wh = tf.reduce_min(deviation_wh)
 
-        pred_box_wh = tf.sqrt(anchors + deviation_wh)
+        pred_box_wh = tf.sqrt(tf.clip_by_value(anchors + deviation_wh, 0., 1.))
         return pred_box_wh
 
     def _convert_truth_values(self, y_true, pred_box_xy, pred_box_wh):
