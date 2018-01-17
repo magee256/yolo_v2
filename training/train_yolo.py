@@ -13,6 +13,7 @@ from keras import models
 from keras import backend as K
 import numpy as np
 import pandas as pd
+from scipy.sparse import coo_matrix
 from skimage.transform import rescale
 from sklearn.model_selection import StratifiedShuffleSplit
 import tensorflow as tf
@@ -49,6 +50,13 @@ class MetricContainer:
 
     def category_loss(self, y_true, y_pred):
         return self.loss.category_loss
+
+    def tot_loss(self, y_true, y_pred):
+        """
+        For some reason Keras reports this as NaN even though it's just
+        the sum of three non NaNs
+        """
+        return self.loss.tot_loss
 
 
 class YoloModel:
@@ -224,6 +232,9 @@ def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
     center_y = cy * grid_dims[1]
     r = np.floor(center_x).astype(np.int32)
     c = np.floor(center_y).astype(np.int32)
+    
+    r[r >= grid_dims[0]] = grid_dims[0] - 1
+    c[c >= grid_dims[1]] = grid_dims[1] - 1
 
     # Loss only calculated if object lands in anchor box
     truth_array = np.zeros((n_samples,
@@ -234,7 +245,15 @@ def expand_truth_vals(ground_truth, n_classes, grid_dims, n_anchors):
         (n_objects, 1, n_classes + 5))
     truth_array = np.reshape(truth_array,
             [n_samples, grid_dims[0], grid_dims[1], n_anchors*(5 + n_classes)])
+    # truth_array = convert_to_sparse_tensor(truth_array)
     return truth_array.astype(np.float32)
+
+
+def convert_to_sparse_tensor(truth_array):
+    truth_array = np.reshape(truth_array, (truth_array.shape[0], -1))
+    coo = coo_matrix(truth_array)
+    indices = np.mat([coo.row, coo.col]).transpose()
+    return tf.SparseTensorValue(indices, coo.data, coo.shape)
 
 
 def rescaled_image_gen(labels, target_dim, n_classes, n_anchors):
@@ -289,7 +308,7 @@ def train_yolo(arg_dict):
                            input_dim=(288, 288, 3),
                            n_classes=50)
 
-    chunksize = 3000
+    chunksize = 32
     labels = pd.read_csv(arg_dict['bbox_file'])
     labels = Labels(labels, arg_dict['image_dir'],
                     n_images_loaded=-1)
@@ -301,8 +320,9 @@ def train_yolo(arg_dict):
     # Train output layer with smallest considered image dimension
     yolo_model.set_train_status(False, out_matches=False)
     hist = yolo_model.train(train_labels, valid_labels,
-                            epochs=1000, file_label='init')
+                            epochs=500, file_label='init')
     yolo_model.set_train_status(True, out_matches=True)
+    yolo_model.model.save('model_data/init_fin.hdf5')
 
     with open('model_data/init_hist.pkl', 'wb') as fhist:
         pickle.dump(hist.history, fhist)
@@ -310,7 +330,7 @@ def train_yolo(arg_dict):
     # Dimensions copied from YOLO 9000 paper
     input_dims = list(range(320, 609, 64))
     inp_choice_hist = [288]
-    for i in range(20):
+    for i in range(10):
         inp = np.random.choice(input_dims)
         inp_choice_hist.append(inp)
         yolo_model.resize((inp, inp, 3))
@@ -319,6 +339,7 @@ def train_yolo(arg_dict):
         #     yolo_model.model.summary(print_fn=lst.append)
         #     pickle.dump('\n'.join(lst), fmod)
         hist = yolo_model.train(train_labels, valid_labels, epochs=100)
+        yolo_model.model.save('model_data/mod_{}_fin.hdf5'.format(i))
         with open('model_data/hist_{}.pkl'.format(i), 'wb') as fhist:
             pickle.dump(hist.history, fhist)
     with open('model_data/inp_dim_choices.pkl', 'wb') as inpf:

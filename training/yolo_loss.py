@@ -342,5 +342,6 @@ class YoloLoss:
         self.obj_conf_loss = obj_conf_loss
         self.category_loss = category_loss
 
-        loss = loc_loss + obj_conf_loss + category_loss
-        return loss
+        tot_loss = loc_loss + obj_conf_loss + category_loss
+        self.tot_loss = tot_loss
+        return tot_loss
