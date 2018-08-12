@@ -1,5 +1,5 @@
 # What is this code for?
-The code in this repository facilitates the training of the YOLO v2 (aka YOLO 9000) deep neural network on custom datasets. Currently it only works with the DeepFashion dataset, but the code in the `training` directory _should_ be pretty general. I tried to make the code work for multiple objects in an image, but DeepFashion only has one bbox per image so it might not work quite right. 
+The code in this repository facilitates the training of the YOLO v2 (aka YOLO 9000) deep neural network on custom datasets. Currently it only works with the [DeepFashion dataset](http://mmlab.ie.cuhk.edu.hk/projects/DeepFashion.html), but the code in the `training` directory _should_ be pretty general. I tried to make the code work for multiple objects in an image, but DeepFashion only has one bbox per image so it might not work quite right. In the end I still couldn't get it working quite right, so it should be a decent starting point but don't assume it's correct. 
 
 For more information on the model see:
 
